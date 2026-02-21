@@ -21,8 +21,8 @@ async def test_get_bsc_balance_returns_dusd() -> None:
         mocked.post(BSC_RPC_URL, payload={"result": "0x56BC75E2D63100000"})
         # USDT: 200.0
         mocked.post(BSC_RPC_URL, payload={"result": "0xAD78EBC5AC6200000"})
-        # DUSD: 50.0
-        mocked.post(BSC_RPC_URL, payload={"result": "0x2B5E3AF16B1880000"})
+        # DUSD: 50.0 (decimals=6, 50 * 1e6 = 0x2FAF080)
+        mocked.post(BSC_RPC_URL, payload={"result": "0x2FAF080"})
 
         result = await get_bsc_balance("0x1234567890abcdef1234567890abcdef12345678")
 

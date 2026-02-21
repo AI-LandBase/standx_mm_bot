@@ -298,7 +298,7 @@ async def get_bsc_balance(wallet_address: str) -> dict[str, Any]:
         async with session.post(BSC_RPC_URL, json=dusd_payload) as response:
             dusd_result = await response.json()
             dusd_hex = dusd_result.get("result", "0x0")
-            dusd_balance = int(dusd_hex, 16) / 1e18  # DUSD decimals
+            dusd_balance = int(dusd_hex, 16) / 1e6  # DUSD decimals=6
 
     return {
         "bnb": bnb_balance,
