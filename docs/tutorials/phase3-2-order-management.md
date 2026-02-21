@@ -978,4 +978,4 @@ async def test_place_and_cancel_order_real(...):
 
 **実装PR**: [#63 Phase 3-2: 注文管理の実装](https://github.com/zomians/standx_mm_bot/pull/63)
 
-**次のチュートリアル**: [Phase 3-3: 厳格モードの実装ガイド](./phase3-3-risk-management.md)（未作成）
+**次のチュートリアル**: [Phase 3-3: 厳格モードの実装ガイド](./phase3-3-risk-management.md)
