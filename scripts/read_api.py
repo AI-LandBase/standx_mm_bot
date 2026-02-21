@@ -33,6 +33,9 @@ BSC_USDC_CONTRACT = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"
 # USDT Contract Address (BSC mainnet - Binance-Peg BSC-USDT)
 BSC_USDT_CONTRACT = "0x55d398326f99059fF775485246999027B3197955"
 
+# DUSD Contract Address (BSC mainnet - StandX DUSD)
+BSC_DUSD_CONTRACT = "0xaf44a1e76f56ee12adbb7ba8acd3cbd474888122"
+
 
 async def get_price(client: StandXHTTPClient, symbol: str) -> None:
     """価格情報を取得して表示."""
@@ -222,7 +225,7 @@ async def get_bsc_balance(wallet_address: str) -> dict[str, Any]:
         wallet_address: ウォレットアドレス（0x形式）
 
     Returns:
-        dict: BNB残高、USDC残高、USDT残高
+        dict: BNB残高、USDC残高、USDT残高、DUSD残高
     """
     async with aiohttp.ClientSession() as session:
         # BNB残高取得
@@ -279,10 +282,29 @@ async def get_bsc_balance(wallet_address: str) -> dict[str, Any]:
             usdt_hex = usdt_result.get("result", "0x0")
             usdt_balance = int(usdt_hex, 16) / 1e18  # USDT decimals
 
+        # DUSD残高取得（ERC-20 balanceOf）
+        dusd_payload = {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "eth_call",
+            "params": [
+                {
+                    "to": BSC_DUSD_CONTRACT,
+                    "data": data
+                },
+                "latest"
+            ]
+        }
+        async with session.post(BSC_RPC_URL, json=dusd_payload) as response:
+            dusd_result = await response.json()
+            dusd_hex = dusd_result.get("result", "0x0")
+            dusd_balance = int(dusd_hex, 16) / 1e6  # DUSD decimals=6
+
     return {
         "bnb": bnb_balance,
         "usdc": usdc_balance,
-        "usdt": usdt_balance
+        "usdt": usdt_balance,
+        "dusd": dusd_balance,
     }
 
 
@@ -349,9 +371,10 @@ async def get_balance(client: StandXHTTPClient, wallet_address: str, chain: str 
         chain_table.add_row(native_token, f"{native_balance:.4f}")
         chain_table.add_row("USDC", f"${chain_balance['usdc']:,.2f}")
 
-        # BSCの場合はUSDTも表示
+        # BSCの場合はUSDT/DUSDも表示
         if chain.lower() == "bsc":
             chain_table.add_row("USDT", f"${chain_balance['usdt']:,.2f}")
+            chain_table.add_row("DUSD", f"${chain_balance['dusd']:,.2f}")
 
         console.print(chain_table)
         console.print(f"[green]✅ Balance fetched successfully[/green]")
