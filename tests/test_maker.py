@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from standx_mm_bot.client import StandXHTTPClient
+from standx_mm_bot.client.exceptions import APIError
 from standx_mm_bot.config import Settings
 from standx_mm_bot.core.order import OrderManager
 from standx_mm_bot.core.risk import RiskManager
@@ -509,3 +510,69 @@ class TestShutdown:
         await strategy.shutdown()
 
         assert strategy._shutdown_event.is_set()
+
+
+class TestCleanup:
+    """_cleanup のテスト."""
+
+    @pytest.mark.asyncio
+    async def test_cleanup_cancels_bid_order(self, config: Settings, mock_http_client: Mock) -> None:
+        """クリーンアップ時にbid注文がキャンセルされることを確認."""
+        mock_http_client.cancel_order.return_value = {"code": 0}
+        strategy = _make_strategy_with_mocks(config, mock_http_client)
+        strategy.bid_order = _make_order(Side.BUY, 2498.0)
+        strategy.ws_client = Mock()
+        strategy.ws_client.disconnect = AsyncMock()
+
+        await strategy._cleanup()
+
+        mock_http_client.cancel_order.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_cancels_both_orders(self, config: Settings, mock_http_client: Mock) -> None:
+        """両サイドの注文がキャンセルされることを確認."""
+        mock_http_client.cancel_order.return_value = {"code": 0}
+        strategy = _make_strategy_with_mocks(config, mock_http_client)
+        strategy.bid_order = _make_order(Side.BUY, 2498.0)
+        strategy.ask_order = _make_order(Side.SELL, 2502.0)
+        strategy.ask_order.id = "test_order_2"
+        strategy.ws_client = Mock()
+        strategy.ws_client.disconnect = AsyncMock()
+
+        await strategy._cleanup()
+
+        assert mock_http_client.cancel_order.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_cleanup_tolerates_cancel_failure(
+        self, config: Settings, mock_http_client: Mock
+    ) -> None:
+        """キャンセル失敗時もクリーンアップが完了することを確認."""
+        mock_http_client.cancel_order.side_effect = APIError("API error")
+        strategy = _make_strategy_with_mocks(config, mock_http_client)
+        strategy.bid_order = _make_order(Side.BUY, 2498.0)
+        strategy.ws_client = Mock()
+        strategy.ws_client.disconnect = AsyncMock()
+
+        await strategy._cleanup()  # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_cleanup_without_order_manager(self, config: Settings) -> None:
+        """order_manager未初期化時もクリーンアップが完了することを確認."""
+        strategy = MakerStrategy(config)
+        strategy.ws_client = Mock()
+        strategy.ws_client.disconnect = AsyncMock()
+
+        await strategy._cleanup()  # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_cleanup_disconnects_ws(self, config: Settings, mock_http_client: Mock) -> None:
+        """WSクライアントが切断されることを確認."""
+        mock_http_client.cancel_order.return_value = {"code": 0}
+        strategy = _make_strategy_with_mocks(config, mock_http_client)
+        strategy.ws_client = Mock()
+        strategy.ws_client.disconnect = AsyncMock()
+
+        await strategy._cleanup()
+
+        strategy.ws_client.disconnect.assert_called_once()

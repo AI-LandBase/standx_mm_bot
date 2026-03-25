@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from typing import Any
 
+from standx_mm_bot.client import StandXHTTPClient, StandXWebSocketClient
 from standx_mm_bot.client.exceptions import APIError
 from standx_mm_bot.config import Settings
 from standx_mm_bot.core.distance import (
@@ -14,6 +16,8 @@ from standx_mm_bot.core.distance import (
     is_approaching,
 )
 from standx_mm_bot.core.escape import calculate_escape_price
+from standx_mm_bot.core.order import OrderManager
+from standx_mm_bot.core.risk import RiskManager
 from standx_mm_bot.models import Action, Order, OrderStatus, Side
 
 logger = logging.getLogger(__name__)
@@ -34,10 +38,10 @@ class MakerStrategy:
         self._exit_code: int = 0
 
         # run() 内で初期化されるコンポーネント
-        self.http_client = None
-        self.ws_client = None
-        self.order_manager = None
-        self.risk_manager = None
+        self.http_client: StandXHTTPClient | None = None
+        self.ws_client: StandXWebSocketClient | None = None
+        self.order_manager: OrderManager | None = None
+        self.risk_manager: RiskManager | None = None
 
     def evaluate_order(self, order: Order, mark_price: float, side: Side) -> Action:
         """注文の状態を評価し、実行すべきアクションを決定."""
@@ -376,8 +380,53 @@ class MakerStrategy:
     # ライフサイクル
     # ------------------------------------------------------------------
 
+    async def run(self) -> None:
+        """メインループ."""
+        async with StandXHTTPClient(self.config) as http_client:
+            self.http_client = http_client
+            self.order_manager = OrderManager(http_client, self.config)
+            self.risk_manager = RiskManager(http_client, self.config)
+
+            ws_client = StandXWebSocketClient(self.config, jwt_token=http_client.jwt_token)
+            self.ws_client = ws_client
+
+            ws_client.on_price_update(self._on_price_update)
+            ws_client.on_order_update(self._on_order_update)
+            ws_client.on_trade(self._on_trade)
+
+            logger.info(f"MakerStrategy started: symbol={self.config.symbol}")
+
+            ws_task = asyncio.create_task(ws_client.connect())
+            await self._shutdown_event.wait()
+            await self._cleanup()
+            ws_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await ws_task
+
+            logger.info("MakerStrategy stopped")
+
     async def shutdown(self) -> None:
-        """Bot をシャットダウンする."""
+        """グレースフルシャットダウン."""
         if self._shutdown_event.is_set():
             return
+        logger.info("Shutting down MakerStrategy...")
         self._shutdown_event.set()
+
+    async def _cleanup(self) -> None:
+        """残注文キャンセル・WS切断."""
+        if self.order_manager is not None:
+            if self.bid_order is not None:
+                try:
+                    await self.order_manager.cancel_order(self.bid_order.id)
+                    logger.info(f"Cancelled BUY order: {self.bid_order.id}")
+                except Exception as e:
+                    logger.error(f"Failed to cancel BUY order: {e}")
+            if self.ask_order is not None:
+                try:
+                    await self.order_manager.cancel_order(self.ask_order.id)
+                    logger.info(f"Cancelled SELL order: {self.ask_order.id}")
+                except Exception as e:
+                    logger.error(f"Failed to cancel SELL order: {e}")
+
+        if self.ws_client is not None:
+            await self.ws_client.disconnect()
