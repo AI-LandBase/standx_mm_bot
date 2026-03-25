@@ -9,6 +9,7 @@ from typing import Any
 import websockets
 from websockets.asyncio.client import ClientConnection
 
+from standx_mm_bot.client.exceptions import AuthenticationError
 from standx_mm_bot.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -17,14 +18,16 @@ logger = logging.getLogger(__name__)
 class StandXWebSocketClient:
     """StandX WebSocket クライアント."""
 
-    def __init__(self, config: Settings):
+    def __init__(self, config: Settings, jwt_token: str | None = None):
         """
         WebSocketクライアントを初期化.
 
         Args:
             config: アプリケーション設定
+            jwt_token: JWT認証トークン（order/tradeチャンネル購読に必要）
         """
         self.config = config
+        self.jwt_token = jwt_token
         self.ws_url = "wss://perps.standx.com/ws-stream/v1"
         self.reconnect_interval = config.ws_reconnect_interval / 1000  # ms to seconds
         self.ws: ClientConnection | None = None
@@ -62,6 +65,36 @@ class StandXWebSocketClient:
         """
         self._callbacks["trade"].append(callback)
 
+    async def _authenticate(self, ws: ClientConnection) -> None:
+        """
+        WebSocket接続を認証.
+
+        jwt_tokenが未設定の場合はスキップする（後方互換性）。
+
+        Args:
+            ws: WebSocket接続
+
+        Raises:
+            AuthenticationError: 認証失敗時またはタイムアウト時
+        """
+        if self.jwt_token is None:
+            return
+
+        auth_message = {"auth": {"token": self.jwt_token}}
+        await ws.send(json.dumps(auth_message))
+        logger.info("Sent authentication message")
+
+        try:
+            raw_response = await asyncio.wait_for(ws.recv(), timeout=10.0)
+            response = json.loads(raw_response)
+            code = response.get("data", {}).get("code")
+            if code != 200:
+                msg = response.get("data", {}).get("msg", "unknown error")
+                raise AuthenticationError(f"WebSocket authentication failed: {msg}")
+            logger.info("WebSocket authentication successful")
+        except TimeoutError:
+            raise AuthenticationError("WebSocket authentication timed out") from None
+
     async def _subscribe_channels(self, ws: ClientConnection) -> None:
         """
         チャンネルを購読.
@@ -74,15 +107,17 @@ class StandXWebSocketClient:
         await ws.send(json.dumps(price_sub))
         logger.info(f"Subscribed to price channel: {self.config.symbol}")
 
-        # order チャンネル購読 (認証必要)
-        order_sub = {"subscribe": {"channel": "order"}}
-        await ws.send(json.dumps(order_sub))
-        logger.info("Subscribed to order channel")
+        # order/trade チャンネルは認証済みの場合のみ購読
+        if self.jwt_token is not None:
+            # order チャンネル購読 (認証必要)
+            order_sub = {"subscribe": {"channel": "order"}}
+            await ws.send(json.dumps(order_sub))
+            logger.info("Subscribed to order channel")
 
-        # trade チャンネル購読 (認証必要)
-        trade_sub = {"subscribe": {"channel": "trade"}}
-        await ws.send(json.dumps(trade_sub))
-        logger.info("Subscribed to trade channel")
+            # trade チャンネル購読 (認証必要)
+            trade_sub = {"subscribe": {"channel": "trade"}}
+            await ws.send(json.dumps(trade_sub))
+            logger.info("Subscribed to trade channel")
 
     async def _dispatch_message(self, message: dict[str, Any]) -> None:
         """
@@ -161,6 +196,7 @@ class StandXWebSocketClient:
                     self.ws = ws
                     logger.info("WebSocket connected")
 
+                    await self._authenticate(ws)
                     await self._subscribe_channels(ws)
                     await self._receive_messages(ws)
 

@@ -132,7 +132,7 @@ async def test_dispatch_message_trade(config: Settings) -> None:
 @pytest.mark.asyncio
 async def test_subscribe_channels(config: Settings) -> None:
     """チャンネル購読が正しく送信されることを確認."""
-    client = StandXWebSocketClient(config)
+    client = StandXWebSocketClient(config, jwt_token="test_token")
 
     # WebSocketのモックを作成
     ws_mock = AsyncMock()
@@ -155,6 +155,88 @@ async def test_subscribe_channels(config: Settings) -> None:
 
     # trade チャンネル購読
     assert sent_messages[2] == {"subscribe": {"channel": "trade"}}
+
+
+@pytest.mark.asyncio
+async def test_websocket_initialization_with_jwt(config: Settings) -> None:
+    """JWT付きでWebSocketクライアントが初期化されることを確認."""
+    client = StandXWebSocketClient(config, jwt_token="test_jwt_token")
+    assert client.jwt_token == "test_jwt_token"
+
+
+@pytest.mark.asyncio
+async def test_websocket_initialization_without_jwt(config: Settings) -> None:
+    """JWT無しでWebSocketクライアントが初期化されることを確認（後方互換性）."""
+    client = StandXWebSocketClient(config)
+    assert client.jwt_token is None
+
+
+@pytest.mark.asyncio
+async def test_authenticate_sends_auth_message(config: Settings) -> None:
+    """認証メッセージが正しく送信されることを確認."""
+    client = StandXWebSocketClient(config, jwt_token="test_jwt_token")
+    ws_mock = AsyncMock()
+    sent_messages = []
+
+    async def mock_send(message: str) -> None:
+        sent_messages.append(json.loads(message))
+
+    ws_mock.send = mock_send
+    auth_response = json.dumps(
+        {"seq": 1, "channel": "auth", "data": {"code": 200, "msg": "success"}}
+    )
+    ws_mock.recv = AsyncMock(return_value=auth_response)
+
+    await client._authenticate(ws_mock)
+
+    assert len(sent_messages) == 1
+    assert sent_messages[0] == {"auth": {"token": "test_jwt_token"}}
+
+
+@pytest.mark.asyncio
+async def test_authenticate_skipped_without_jwt(config: Settings) -> None:
+    """JWT未設定時は認証をスキップすることを確認."""
+    client = StandXWebSocketClient(config)
+    ws_mock = AsyncMock()
+
+    await client._authenticate(ws_mock)
+
+    ws_mock.send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_authenticate_failure_raises(config: Settings) -> None:
+    """認証失敗時にAuthenticationErrorが発生することを確認."""
+    from standx_mm_bot.client.exceptions import AuthenticationError
+
+    client = StandXWebSocketClient(config, jwt_token="bad_token")
+    ws_mock = AsyncMock()
+    ws_mock.send = AsyncMock()
+    auth_response = json.dumps(
+        {"seq": 1, "channel": "auth", "data": {"code": 401, "msg": "unauthorized"}}
+    )
+    ws_mock.recv = AsyncMock(return_value=auth_response)
+
+    with pytest.raises(AuthenticationError):
+        await client._authenticate(ws_mock)
+
+
+@pytest.mark.asyncio
+async def test_subscribe_channels_without_jwt(config: Settings) -> None:
+    """JWT未設定時はpriceチャンネルのみ購読されることを確認."""
+    client = StandXWebSocketClient(config)  # jwt_token=None
+    ws_mock = AsyncMock()
+    sent_messages = []
+
+    async def mock_send(message: str) -> None:
+        sent_messages.append(json.loads(message))
+
+    ws_mock.send = mock_send
+
+    await client._subscribe_channels(ws_mock)
+
+    assert len(sent_messages) == 1
+    assert sent_messages[0] == {"subscribe": {"channel": "price", "symbol": "ETH-USD"}}
 
 
 @pytest.mark.asyncio
