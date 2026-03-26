@@ -2,24 +2,24 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 
-class Side(str, Enum):
+class Side(StrEnum):
     """注文サイド."""
 
     BUY = "BUY"
     SELL = "SELL"
 
 
-class OrderType(str, Enum):
+class OrderType(StrEnum):
     """注文タイプ."""
 
     LIMIT = "LIMIT"
     MARKET = "MARKET"
 
 
-class OrderStatus(str, Enum):
+class OrderStatus(StrEnum):
     """注文ステータス."""
 
     OPEN = "OPEN"
@@ -28,7 +28,7 @@ class OrderStatus(str, Enum):
     CANCELED = "CANCELED"
 
 
-class Action(str, Enum):
+class Action(StrEnum):
     """約定回避アクション."""
 
     HOLD = "HOLD"  # 現状維持

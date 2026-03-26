@@ -516,7 +516,9 @@ class TestCleanup:
     """_cleanup のテスト."""
 
     @pytest.mark.asyncio
-    async def test_cleanup_cancels_bid_order(self, config: Settings, mock_http_client: Mock) -> None:
+    async def test_cleanup_cancels_bid_order(
+        self, config: Settings, mock_http_client: Mock
+    ) -> None:
         """クリーンアップ時にbid注文がキャンセルされることを確認."""
         mock_http_client.cancel_order.return_value = {"code": 0}
         strategy = _make_strategy_with_mocks(config, mock_http_client)
@@ -529,7 +531,9 @@ class TestCleanup:
         mock_http_client.cancel_order.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_cleanup_cancels_both_orders(self, config: Settings, mock_http_client: Mock) -> None:
+    async def test_cleanup_cancels_both_orders(
+        self, config: Settings, mock_http_client: Mock
+    ) -> None:
         """両サイドの注文がキャンセルされることを確認."""
         mock_http_client.cancel_order.return_value = {"code": 0}
         strategy = _make_strategy_with_mocks(config, mock_http_client)

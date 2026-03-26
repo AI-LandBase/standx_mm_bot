@@ -28,9 +28,7 @@ async def main() -> None:
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(
-            sig, lambda: asyncio.create_task(strategy.shutdown())
-        )
+        loop.add_signal_handler(sig, lambda: asyncio.create_task(strategy.shutdown()))
 
     logger.info(
         f"StandX MM Bot starting: symbol={config.symbol}, "

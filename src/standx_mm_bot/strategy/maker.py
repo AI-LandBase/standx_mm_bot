@@ -48,7 +48,10 @@ class MakerStrategy:
         distance = calculate_distance_bps(order.price, mark_price)
 
         # 優先順位1: 約定回避 (ESCAPE)
-        if is_approaching(mark_price, order.price, side) and distance < self.config.escape_threshold_bps:
+        if (
+            is_approaching(mark_price, order.price, side)
+            and distance < self.config.escape_threshold_bps
+        ):
             return Action.ESCAPE
 
         # 優先順位2: 10bps 境界への接近 (REPOSITION)
