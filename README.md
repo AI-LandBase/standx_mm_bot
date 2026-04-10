@@ -170,25 +170,31 @@ standx_mm_bot/
 │       ├── __main__.py        # エントリーポイント
 │       ├── config.py          # 設定管理
 │       ├── auth.py            # JWT認証
+│       ├── models.py          # データモデル (Order, Side, Action等)
 │       ├── client/
+│       │   ├── __init__.py
+│       │   ├── exceptions.py  # カスタム例外
 │       │   ├── http.py        # REST API クライアント
 │       │   └── websocket.py   # WebSocket クライアント
 │       ├── core/
-│       │   ├── order.py       # 注文管理
-│       │   └── escape.py      # 約定回避ロジック
+│       │   ├── __init__.py
+│       │   ├── distance.py    # bps距離計算
+│       │   ├── escape.py      # 約定回避ロジック
+│       │   ├── order.py       # 注文管理 (OrderManager)
+│       │   └── risk.py        # 厳格モード (RiskManager)
 │       └── strategy/
-│           └── maker.py       # Maker戦略ロジック
+│           ├── __init__.py
+│           └── maker.py       # Maker戦略 (全体統合)
 ├── tests/
-│   ├── test_auth.py
-│   ├── test_order.py
-│   └── test_escape.py
 ├── .env.example
 ├── .gitignore
 ├── pyproject.toml
 ├── Makefile
 ├── README.md
 ├── CONTRIBUTING.md
-└── CLAUDE.md
+├── CLAUDE.md
+├── GUIDE.md
+└── DESIGN.md
 ```
 
 ---
