@@ -1,131 +1,120 @@
-.PHONY: up down test test-integration test-all test-cov typecheck lint format format-check check logs clean build-prod up-prod restart-prod wallet wallet-bsc wallet-solana price orders position balance status switch-eth switch-btc up-eth up-btc config
+.DEFAULT_GOAL := help
+.PHONY: help up down test test-integration test-all test-cov typecheck lint format format-check check logs clean build-prod up-prod restart-prod wallet wallet-bsc wallet-solana price orders position balance status switch-eth switch-btc up-eth up-btc config
 
-# 開発環境: Bot起動
-up:
+## Bot
+up:            ## Bot 起動
 	docker compose up -d
 
-# 開発環境: Bot停止
-down:
+down:          ## Bot 停止
 	docker compose down
 
-# テスト実行（統合テスト除外、ガス代ゼロ）
-test:
+logs:          ## ログ確認
+	docker compose logs -f bot
+
+up-eth: switch-eth up  ## ETH-USD で起動
+up-btc: switch-btc up  ## BTC-USD で起動
+
+## テスト
+test:          ## テスト実行（統合テスト除外）
 	docker compose run --rm bot pytest -m "not integration"
 
-# 統合テスト（実APIを使用、手動実行推奨）
-test-integration:
+test-integration:  ## 統合テスト（実API使用）
 	docker compose run --rm bot pytest -m integration
 
-# 全テスト（統合テスト含む）
-test-all:
+test-all:      ## 全テスト（統合テスト含む）
 	docker compose run --rm bot pytest
 
-# テスト (カバレッジ付き、統合テスト除外)
-test-cov:
+test-cov:      ## テスト + カバレッジ
 	docker compose run --rm bot pytest -m "not integration" --cov --cov-report=term-missing
 
-# 型チェック
-typecheck:
+## コード品質
+typecheck:     ## 型チェック (mypy)
 	docker compose run --rm bot mypy src
 
-# Lint
-lint:
+lint:          ## Lint (ruff)
 	docker compose run --rm bot ruff check src tests
 
-# フォーマット
-format:
+format:        ## フォーマット (ruff)
 	docker compose run --rm bot ruff format src tests
 	docker compose run --rm bot ruff check --fix src tests
 
-# フォーマットチェック（修正なし）
-format-check:
+format-check:  ## フォーマットチェック（修正なし）
 	docker compose run --rm bot ruff format --check src tests
 
-# 全チェック (format-check + lint + typecheck + test-cov)
-check: format-check lint typecheck test-cov
+check: format-check lint typecheck test-cov  ## 全チェック (format + lint + typecheck + test)
 
-# ログ確認
-logs:
-	docker compose logs -f bot
+## ツール
+wallet: wallet-bsc  ## ウォレット作成（デフォルト: BSC）
 
-# クリーンアップ
-clean:
-	docker compose down -v
-	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov
-	find . -type d -name "__pycache__" -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
-
-# 本番環境: イメージビルド
-build-prod:
-	docker compose -f compose.prod.yaml build
-
-# 本番環境: Bot起動
-up-prod:
-	docker compose -f compose.prod.yaml up -d
-
-# 本番環境: Bot再起動
-restart-prod:
-	docker compose -f compose.prod.yaml restart
-
-# ウォレット作成と.env生成（デフォルト: BSC）
-wallet: wallet-bsc
-
-# BSC ウォレット作成
-wallet-bsc:
+wallet-bsc:    ## BSC ウォレット作成
 	@echo "Creating new BSC wallet and generating .env file..."
 	docker compose run --rm bot python scripts/create_wallet_bsc.py
 
-# Solana ウォレット作成
-wallet-solana:
+wallet-solana: ## Solana ウォレット作成
 	@echo "Creating new Solana wallet and generating .env file..."
 	docker compose run --rm bot python scripts/create_wallet_solana.py
 
-# API読み取りコマンド（動作確認・デバッグ用）
-price:
+price:         ## 現在の価格を取得
 	@echo "Fetching current price..."
 	docker compose run --rm bot python scripts/read_api.py price
 
-orders:
+orders:        ## 未決注文を取得
 	@echo "Fetching open orders..."
 	docker compose run --rm bot python scripts/read_api.py orders
 
-position:
+position:      ## 現在のポジションを取得
 	@echo "Fetching current position..."
 	docker compose run --rm bot python scripts/read_api.py position
 
-balance:
+balance:       ## 残高を取得（StandX + チェーン）
 	@echo "Fetching balance (StandX + Chain)..."
 	docker compose run --rm bot python scripts/read_api.py balance
 
-status:
+status:        ## 全ステータスを取得
 	@echo "Fetching all status..."
 	docker compose run --rm bot python scripts/read_api.py status
 
-# シンボル切り替え: ETH-USD
-switch-eth:
-	@if [ ! -f .env ]; then echo "Error: .env file not found. Run 'cp .env.example .env' first."; exit 1; fi
-	@sed -i.bak 's/^SYMBOL=.*/SYMBOL=ETH-USD/' .env && rm -f .env.bak
-	@echo "✅ Switched to ETH-USD"
-	@grep "^SYMBOL=" .env
-
-# シンボル切り替え: BTC-USD
-switch-btc:
-	@if [ ! -f .env ]; then echo "Error: .env file not found. Run 'cp .env.example .env' first."; exit 1; fi
-	@sed -i.bak 's/^SYMBOL=.*/SYMBOL=BTC-USD/' .env && rm -f .env.bak
-	@echo "✅ Switched to BTC-USD"
-	@grep "^SYMBOL=" .env
-
-# ETH-USDで起動
-up-eth: switch-eth up
-
-# BTC-USDで起動
-up-btc: switch-btc up
-
-# 現在の設定確認（秘密鍵は表示しない）
-config:
+config:        ## 現在の設定確認（秘密鍵は非表示）
 	@echo "=== Current Configuration ==="
 	@if [ -f .env ]; then \
 		cat .env | grep -v "KEY" | grep -v "^#" | grep -v "^$$"; \
 	else \
 		echo "Error: .env file not found"; \
 	fi
+
+## シンボル切り替え
+switch-eth:    ## ETH-USD に切り替え
+	@if [ ! -f .env ]; then echo "Error: .env file not found. Run 'cp .env.example .env' first."; exit 1; fi
+	@sed -i.bak 's/^SYMBOL=.*/SYMBOL=ETH-USD/' .env && rm -f .env.bak
+	@echo "Switched to ETH-USD"
+	@grep "^SYMBOL=" .env
+
+switch-btc:    ## BTC-USD に切り替え
+	@if [ ! -f .env ]; then echo "Error: .env file not found. Run 'cp .env.example .env' first."; exit 1; fi
+	@sed -i.bak 's/^SYMBOL=.*/SYMBOL=BTC-USD/' .env && rm -f .env.bak
+	@echo "Switched to BTC-USD"
+	@grep "^SYMBOL=" .env
+
+## 本番環境
+build-prod:    ## 本番イメージビルド
+	docker compose -f compose.prod.yaml build
+
+up-prod:       ## 本番 Bot 起動
+	docker compose -f compose.prod.yaml up -d
+
+restart-prod:  ## 本番 Bot 再起動
+	docker compose -f compose.prod.yaml restart
+
+## クリーンアップ
+clean:         ## キャッシュ・一時ファイル削除
+	docker compose down -v
+	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov
+	find . -type d -name "__pycache__" -exec rm -rf {} +
+	find . -type f -name "*.pyc" -delete
+
+## ヘルプ
+help:          ## このヘルプを表示
+	@echo "Usage: make [target]"
+	@echo ""
+	@awk '/^## [^#]/{if(NR>1)printf "\n"; printf "\033[1m%s\033[0m\n", substr($$0,4); next} /^[a-zA-Z_-]+:.*## /{printf "  \033[36m%-18s\033[0m %s\n", substr($$1,1,length($$1)-1), substr($$0,index($$0,"## ")+3)}' $(MAKEFILE_LIST)
+	@echo ""
