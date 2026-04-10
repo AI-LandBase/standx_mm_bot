@@ -2,6 +2,7 @@
 
 from unittest.mock import patch
 
+import aiohttp
 import pytest
 from aioresponses import aioresponses
 
@@ -242,3 +243,153 @@ async def test_session_not_initialized(config: Settings) -> None:
 
     with pytest.raises(RuntimeError, match="Session not initialized"):
         await client.get_symbol_price("ETH_USDC")
+
+
+@pytest.mark.asyncio
+async def test_jwt_token_not_initialized(config: Settings) -> None:
+    """JWTトークン未設定時にエラーが発生することを確認."""
+    async with StandXHTTPClient(config, jwt_token="test_jwt_token") as client:
+        client.jwt_token = None
+        with pytest.raises(RuntimeError, match="JWT token not initialized"):
+            await client.get_symbol_price("ETH_USDC")
+
+
+@pytest.mark.asyncio
+async def test_bsc_missing_signing_key() -> None:
+    """BSCチェーンでリクエスト署名鍵が未設定時にエラーが発生することを確認."""
+    config_no_key = Settings(
+        standx_private_key="0x" + "a" * 64,
+        standx_wallet_address="0x1234567890abcdef",
+        standx_chain="bsc",
+        symbol="ETH_USDC",
+        order_size=0.1,
+        standx_request_signing_key="",
+    )
+    async with StandXHTTPClient(config_no_key, jwt_token="test_jwt_token") as client:
+        with pytest.raises(RuntimeError, match="STANDX_REQUEST_SIGNING_KEY"):
+            await client.get_symbol_price("ETH_USDC")
+
+
+@pytest.mark.asyncio
+async def test_network_error(config: Settings) -> None:
+    """ネットワークエラーが正しくNetworkErrorに変換されることを確認."""
+    from standx_mm_bot.client.exceptions import NetworkError
+
+    with aioresponses() as mocked:
+        mocked.get(
+            "https://perps.standx.com/api/query_symbol_price?symbol=ETH_USDC",
+            exception=aiohttp.ClientError("Connection refused"),
+        )
+
+        async with StandXHTTPClient(config, jwt_token="test_jwt_token") as client:
+            with pytest.raises(NetworkError, match="Network error"):
+                await client.get_symbol_price("ETH_USDC")
+
+
+@pytest.mark.asyncio
+async def test_obtain_jwt_prepare_signin_failure(config: Settings) -> None:
+    """JWT取得時にprepare-signinが失敗した場合のエラーを確認."""
+    with aioresponses() as mocked:
+        mocked.post(
+            "https://api.standx.com/v1/offchain/prepare-signin?chain=bsc",
+            status=500,
+            body="Internal Server Error",
+        )
+
+        with pytest.raises(AuthenticationError, match="Failed to prepare signin"):
+            async with StandXHTTPClient(config) as _client:
+                pass
+
+
+@pytest.mark.asyncio
+async def test_obtain_jwt_no_signed_data(config: Settings) -> None:
+    """JWT取得時にsignedDataが返されない場合のエラーを確認."""
+    with aioresponses() as mocked:
+        mocked.post(
+            "https://api.standx.com/v1/offchain/prepare-signin?chain=bsc",
+            payload={"signedData": ""},
+        )
+
+        with pytest.raises(AuthenticationError, match="No signedData"):
+            async with StandXHTTPClient(config) as _client:
+                pass
+
+
+@pytest.mark.asyncio
+async def test_obtain_jwt_invalid_signed_data(config: Settings) -> None:
+    """JWT取得時にsignedDataのデコードが失敗した場合のエラーを確認."""
+    with aioresponses() as mocked:
+        mocked.post(
+            "https://api.standx.com/v1/offchain/prepare-signin?chain=bsc",
+            payload={"signedData": "not-a-valid-jwt"},
+        )
+
+        with pytest.raises(AuthenticationError, match="Failed to decode signedData"):
+            async with StandXHTTPClient(config) as _client:
+                pass
+
+
+@pytest.mark.asyncio
+async def test_obtain_jwt_network_error(config: Settings) -> None:
+    """JWT取得時のネットワークエラーを確認."""
+    with aioresponses() as mocked:
+        mocked.post(
+            "https://api.standx.com/v1/offchain/prepare-signin?chain=bsc",
+            exception=aiohttp.ClientError("Connection refused"),
+        )
+
+        with pytest.raises(AuthenticationError, match="Network error during JWT"):
+            async with StandXHTTPClient(config) as _client:
+                pass
+
+
+@pytest.mark.asyncio
+async def test_obtain_jwt_login_failure(config: Settings) -> None:
+    """JWT取得時にloginが失敗した場合のエラーを確認."""
+    import base64
+
+    # 有効なJWT形式のsignedDataを作成
+    header = base64.urlsafe_b64encode(b'{"alg":"HS256","typ":"JWT"}').rstrip(b"=")
+    payload = base64.urlsafe_b64encode(b'{"message":"test message"}').rstrip(b"=")
+    sig = base64.urlsafe_b64encode(b"signature").rstrip(b"=")
+    fake_jwt = f"{header.decode()}.{payload.decode()}.{sig.decode()}"
+
+    with aioresponses() as mocked:
+        mocked.post(
+            "https://api.standx.com/v1/offchain/prepare-signin?chain=bsc",
+            payload={"signedData": fake_jwt},
+        )
+        mocked.post(
+            "https://api.standx.com/v1/offchain/login?chain=bsc",
+            status=401,
+            body="Unauthorized",
+        )
+
+        with pytest.raises(AuthenticationError, match="Failed to login"):
+            async with StandXHTTPClient(config) as _client:
+                pass
+
+
+@pytest.mark.asyncio
+async def test_obtain_jwt_no_token_in_response(config: Settings) -> None:
+    """JWT取得時にレスポンスにtokenが含まれない場合のエラーを確認."""
+    import base64
+
+    header = base64.urlsafe_b64encode(b'{"alg":"HS256","typ":"JWT"}').rstrip(b"=")
+    payload = base64.urlsafe_b64encode(b'{"message":"test message"}').rstrip(b"=")
+    sig = base64.urlsafe_b64encode(b"signature").rstrip(b"=")
+    fake_jwt = f"{header.decode()}.{payload.decode()}.{sig.decode()}"
+
+    with aioresponses() as mocked:
+        mocked.post(
+            "https://api.standx.com/v1/offchain/prepare-signin?chain=bsc",
+            payload={"signedData": fake_jwt},
+        )
+        mocked.post(
+            "https://api.standx.com/v1/offchain/login?chain=bsc",
+            payload={"token": ""},
+        )
+
+        with pytest.raises(AuthenticationError, match="No token in login"):
+            async with StandXHTTPClient(config) as _client:
+                pass

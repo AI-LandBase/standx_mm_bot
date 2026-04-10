@@ -455,7 +455,7 @@ print(config.standx_private_key)  # 型安全
 ┌─────────────────────────────────────────┐
 │       StandX API                        │
 │  - REST: 注文発注・キャンセル            │
-│  - WebSocket: 価格・注文状態             │
+│  - WebSocket: 価格・注文状態・約定通知   │
 └─────────────────────────────────────────┘
 ```
 
@@ -466,23 +466,25 @@ print(config.standx_private_key)  # 型安全
 - アプリケーション起動
 
 **Layer 2: Strategy** (`strategy/maker.py`)
-- 状態管理
-- 判断ロジックの統合
+- 状態管理 (mark_price, bid/ask注文)
+- 判断ロジックの統合 (evaluate_order → HOLD/ESCAPE/REPOSITION)
+- WebSocket コールバック統合 (価格更新・注文更新・約定検知)
 
 **Layer 3: Core Logic** (`core/`)
-- `order.py`: 注文管理
-- `escape.py`: 約定回避
-- `risk.py`: 厳格モード
-- `distance.py`: bps計算
+- `distance.py`: bps計算 (純粋関数、依存なし)
+- `escape.py`: 約定回避 (escape先の価格計算)
+- `order.py`: 注文管理 (OrderManager: 発注・キャンセル・再配置)
+- `risk.py`: 厳格モード (RiskManager: 約定検知→即クローズ→停止)
 
 **Layer 4: Client** (`client/`)
-- `http.py`: REST API 通信
-- `websocket.py`: WebSocket 通信
+- `http.py`: REST API 通信 (JWT認証、注文操作)
+- `websocket.py`: WebSocket 通信 (価格・注文・約定のリアルタイム受信)
+- `exceptions.py`: カスタム例外 (APIError, AuthenticationError, NetworkError)
 
 **Layer 5: Foundation** (`config.py`, `models.py`, `auth.py`)
-- 設定管理
-- データモデル
-- 認証
+- 設定管理 (pydantic-settings)
+- データモデル (Order, Side, Action, OrderStatus)
+- 認証 (EVM/Solana 署名、リクエスト署名)
 
 ---
 
@@ -1038,4 +1040,4 @@ if order.status == "FILLED":
 
 ---
 
-**Last Updated**: 2026-01-20
+**Last Updated**: 2026-04-10

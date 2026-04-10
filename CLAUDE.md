@@ -109,14 +109,18 @@ standx_mm_bot/
 │   ├── __main__.py        # エントリーポイント
 │   ├── config.py          # 設定管理
 │   ├── auth.py            # JWT認証
+│   ├── models.py          # データモデル (Order, Side, Action等)
 │   ├── client/
+│   │   ├── exceptions.py  # カスタム例外
 │   │   ├── http.py        # REST API
 │   │   └── websocket.py   # WebSocket
 │   ├── core/
-│   │   ├── order.py       # 注文管理
-│   │   └── escape.py      # 約定回避ロジック
+│   │   ├── distance.py    # bps距離計算
+│   │   ├── escape.py      # 約定回避ロジック
+│   │   ├── order.py       # 注文管理 (OrderManager)
+│   │   └── risk.py        # 厳格モード (RiskManager)
 │   └── strategy/
-│       └── maker.py       # Maker戦略
+│       └── maker.py       # Maker戦略 (全体統合)
 ├── tests/
 ├── pyproject.toml
 └── Makefile
@@ -439,4 +443,4 @@ Claude Code が操作を実行する際の基準を定義します。
 
 ---
 
-**Last Updated**: 2026-01-20
+**Last Updated**: 2026-04-10
